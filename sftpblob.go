@@ -168,17 +168,21 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 
 	// Do a full recursive scan of the root directory.
 	var result driver.ListPage
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	walker := b.sftpClient.Walk(root)
+	for walker.Step() {
+		err := walker.Err()
 		if err != nil {
-			// Couldn't read this file/directory for some reason; just skip it.
-			return nil
+			continue
 		}
+		path := walker.Path()
 		// os.Walk returns the root directory; skip it.
 		if path == b.dir {
-			return nil
+			continue
 		}
+
+		info := walker.Stat()
 		// Strip the <b.dir> prefix from path; +1 is to include the separator.
-		path = path[len(b.dir)+1:]
+		path = path[len(b.dir):]
 		// Unescape the path to get the key.
 		key := path
 		// Skip all directories. If opts.Delimiter is set, we'll create
@@ -190,19 +194,19 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 			// Avoid recursing into subdirectories if the directory name already
 			// doesn't match the prefix; any files in it are guaranteed not to match.
 			if len(key) > len(opts.Prefix) && !strings.HasPrefix(key, opts.Prefix) {
-				return filepath.SkipDir
+				walker.SkipDir()
 			}
 			// Similarly, avoid recursing into subdirectories if we're making
 			// "directories" and all of the files in this subdirectory are guaranteed
 			// to collapse to a "directory" that we've already added.
 			if lastPrefix != "" && strings.HasPrefix(key, lastPrefix) {
-				return filepath.SkipDir
+				walker.SkipDir()
 			}
-			return nil
+			continue
 		}
 		// Skip files/directories that don't match the Prefix.
 		if !strings.HasPrefix(key, opts.Prefix) {
-			return nil
+			continue
 		}
 		obj := &driver.ListObject{
 			Key:     key,
@@ -221,7 +225,7 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 				prefix := opts.Prefix + keyWithoutPrefix[0:idx+len(opts.Delimiter)]
 				// We've already included this "directory"; don't add it.
 				if prefix == lastPrefix {
-					return nil
+					continue
 				}
 				// Update the object to be a "directory".
 				obj = &driver.ListObject{
@@ -233,18 +237,14 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 		}
 		// If there's a pageToken, skip anything before it.
 		if pageToken != "" && obj.Key <= pageToken {
-			return nil
+			continue
 		}
 		// If we've already got a full page of results, set NextPageToken and stop.
 		if len(result.Objects) == pageSize {
 			result.NextPageToken = []byte(result.Objects[pageSize-1].Key)
-			return io.EOF
+			break
 		}
 		result.Objects = append(result.Objects, obj)
-		return nil
-	})
-	if err != nil && err != io.EOF {
-		return nil, err
 	}
 	return &result, nil
 }

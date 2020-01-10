@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -29,6 +31,11 @@ func main() {
 	}
 	defer b.Close()
 
+	if file == "list" {
+		list(ctx, b, "", "  ")
+		return
+	}
+
 	// Prepare the file for upload.
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
@@ -45,5 +52,25 @@ func main() {
 	}
 	if err = w.Close(); err != nil {
 		log.Fatalf("Failed to close: %s", err)
+	}
+}
+
+func list(ctx context.Context, b *blob.Bucket, prefix, indent string) {
+	iter := b.List(&blob.ListOptions{
+		Delimiter: "/",
+		Prefix:    prefix,
+	})
+	for {
+		obj, err := iter.Next(ctx)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%s%s\n", indent, obj.Key)
+		if obj.IsDir {
+			list(ctx, b, obj.Key, indent+"  ")
+		}
 	}
 }
