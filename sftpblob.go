@@ -63,7 +63,7 @@ func openBucket(u *url.URL, opts *Options) (driver.Bucket, error) {
 		Auth: []ssh.AuthMethod{
 			ssh.Password(pass),
 		},
-		//HostKeyCallback: ssh.FixedHostKey(hostKey),
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 	client, err := ssh.Dial("tcp", u.Host, sshConfig)
 	if err != nil {
