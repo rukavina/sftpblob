@@ -18,7 +18,7 @@ import (
 func main() {
 	// Define our input.
 	if len(os.Args) != 3 {
-		log.Fatal("usage: upload BUCKET_URL FILE")
+		log.Fatal("usage: ./uploader BUCKET_URL FILE or ./uploader BUCKET_URL COMMAND, where COMMAND can be: list")
 	}
 	bucketURL := os.Args[1]
 	file := os.Args[2]
@@ -68,7 +68,7 @@ func list(ctx context.Context, b *blob.Bucket, prefix, indent string) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s%s\n", indent, obj.Key)
+		fmt.Printf("%s%s (%d B)\n", indent, obj.Key, obj.Size)
 		if obj.IsDir {
 			list(ctx, b, obj.Key, indent+"  ")
 		}

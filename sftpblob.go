@@ -427,7 +427,7 @@ func (b *bucket) Delete(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	err = os.Remove(path)
+	err = b.sftpClient.Remove(path)
 	if err != nil {
 		return err
 	}
