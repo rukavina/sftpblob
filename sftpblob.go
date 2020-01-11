@@ -281,7 +281,7 @@ func (b *bucket) NewRangeReader(ctx context.Context, key string, offset, length 
 	if err != nil {
 		return nil, err
 	}
-	f, err := os.Open(path)
+	f, err := b.sftpClient.Open(path)
 	if err != nil {
 		return nil, err
 	}

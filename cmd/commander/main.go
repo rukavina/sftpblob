@@ -17,11 +17,12 @@ import (
 
 func main() {
 	// Define our input.
-	if len(os.Args) != 3 {
-		log.Fatal("usage: ./uploader BUCKET_URL FILE or ./uploader BUCKET_URL COMMAND, where COMMAND can be: list")
+	if len(os.Args) != 4 {
+		log.Fatal("usage: ./uploader BUCKET_URL COMMAND PARAM, where COMMAND can be: list|upload|mkdir")
 	}
 	bucketURL := os.Args[1]
-	file := os.Args[2]
+	command := os.Args[2]
+	param := os.Args[3]
 
 	ctx := context.Background()
 	// Open a connection to the bucket.
@@ -31,12 +32,20 @@ func main() {
 	}
 	defer b.Close()
 
-	if file == "list" {
-		list(ctx, b, "", "  ")
-		return
+	switch command {
+	case "list":
+		list(ctx, b, param, "  ")
+	case "upload":
+		upload(ctx, b, param)
+	case "mkdir":
+		mkdir(ctx, b, param)
+	case "remove":
+		remove(ctx, b, param)
 	}
 
-	// Prepare the file for upload.
+}
+
+func upload(ctx context.Context, b *blob.Bucket, file string) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 		log.Fatalf("Failed to read file: %s", err)
@@ -69,8 +78,28 @@ func list(ctx context.Context, b *blob.Bucket, prefix, indent string) {
 			log.Fatal(err)
 		}
 		fmt.Printf("%s%s (%d B)\n", indent, obj.Key, obj.Size)
+		//if dir, make new recursive call to the same func
 		if obj.IsDir {
 			list(ctx, b, obj.Key, indent+"  ")
 		}
+	}
+}
+
+func mkdir(ctx context.Context, b *blob.Bucket, dir string) {
+	//we need to fake an empty new file inside of the new dir
+	file := dir + "/" + ".newdir"
+	w, err := b.NewWriter(ctx, file, nil)
+	if err != nil {
+		log.Fatalf("Failed to obtain writer: %s", err)
+	}
+	if err = w.Close(); err != nil {
+		log.Fatalf("Failed to close: %s", err)
+	}
+}
+
+func remove(ctx context.Context, b *blob.Bucket, file string) {
+	err := b.Delete(ctx, file)
+	if err != nil {
+		log.Fatalf("Failed to delete %q: %v", file, err)
 	}
 }
