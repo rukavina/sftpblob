@@ -54,6 +54,18 @@ type bucket struct {
 	sftpClient *sftp.Client
 }
 
+func addTrailingSlash(path string) string {
+	//we need trailing slash for this
+	if path == "" {
+		path = "/"
+	} else {
+		if path[len(path)-1:] != "/" {
+			path += "/"
+		}
+	}
+	return path
+}
+
 // openBucket creates a driver.Bucket that reads and writes to dir.
 // dir must exist.
 func openBucket(u *url.URL, opts *Options) (driver.Bucket, error) {
@@ -75,7 +87,7 @@ func openBucket(u *url.URL, opts *Options) (driver.Bucket, error) {
 		return nil, fmt.Errorf("failed to create sftp client for the host %s: %v", u.Host, err)
 	}
 
-	dir := u.Path
+	dir := addTrailingSlash(u.Path)
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, err
@@ -166,6 +178,8 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 		root = filepath.Join(root, opts.Prefix[:i])
 	}
 
+	//fmt.Printf("ListPaged root: %q, d.dir: %q\n", root, b.dir)
+
 	// Do a full recursive scan of the root directory.
 	var result driver.ListPage
 	walker := b.sftpClient.Walk(root)
@@ -175,6 +189,7 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 			continue
 		}
 		path := walker.Path()
+		//fmt.Printf("path: %q\n", path)
 		// os.Walk returns the root directory; skip it.
 		if path == b.dir {
 			continue
@@ -185,6 +200,7 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 		path = path[len(b.dir):]
 		// Unescape the path to get the key.
 		key := path
+		//fmt.Printf("key: %q\n", key)
 		// Skip all directories. If opts.Delimiter is set, we'll create
 		// pseudo-directories later.
 		// Note that returning nil means that we'll still recurse into it;
