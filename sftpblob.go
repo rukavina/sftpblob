@@ -197,6 +197,10 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 
 		info := walker.Stat()
 		// Strip the <b.dir> prefix from path; +1 is to include the separator.
+		//fmt.Printf("\npath: %s, b.dir: %s\n", path, b.dir)
+		if len(b.dir) > len(path) {
+			continue
+		}
 		path = path[len(b.dir):]
 		// Unescape the path to get the key.
 		key := path
