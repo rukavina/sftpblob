@@ -88,7 +88,7 @@ func openBucket(u *url.URL, opts *Options) (driver.Bucket, error) {
 	}
 
 	dir := addTrailingSlash(u.Path)
-	info, err := os.Stat(dir)
+	info, err := sftpClient.Stat(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func (b *bucket) forKey(key string) (string, os.FileInfo, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	info, err := os.Stat(path)
+	info, err := b.sftpClient.Stat(path)
 	if err != nil {
 		return "", nil, err
 	}
