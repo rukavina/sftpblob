@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/pkg/sftp"
@@ -154,118 +155,31 @@ func (b *bucket) forKey(key string) (string, os.FileInfo, error) {
 
 // ListPaged implements driver.ListPaged.
 func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driver.ListPage, error) {
-
-	var pageToken string
-	if len(opts.PageToken) > 0 {
-		pageToken = string(opts.PageToken)
-	}
-	pageSize := opts.PageSize
-	if pageSize == 0 {
-		pageSize = defaultPageSize
-	}
-	// If opts.Delimiter != "", lastPrefix contains the last "directory" key we
-	// added. It is used to avoid adding it again; all files in this "directory"
-	// are collapsed to the single directory entry.
-	var lastPrefix string
-
-	// If the Prefix contains a "/", we can set the root of the Walk
-	// to the path specified by the Prefix as any files below the path will not
-	// match the Prefix.
-	// Note that we use "/" explicitly and not os.PathSeparator, as the opts.Prefix
-	// is in the unescaped form.
 	root := b.dir
 	if i := strings.LastIndex(opts.Prefix, "/"); i > -1 {
 		root = filepath.Join(root, opts.Prefix[:i])
 	}
 
 	//fmt.Printf("ListPaged root: %q, d.dir: %q\n", root, b.dir)
-
-	// Do a full recursive scan of the root directory.
 	var result driver.ListPage
-	walker := b.sftpClient.Walk(root)
-	for walker.Step() {
-		err := walker.Err()
-		if err != nil {
-			continue
-		}
-		path := walker.Path()
-		//fmt.Printf("path: %q\n", path)
-		// os.Walk returns the root directory; skip it.
-		if path == b.dir {
-			continue
-		}
 
-		info := walker.Stat()
-		// Strip the <b.dir> prefix from path; +1 is to include the separator.
-		//fmt.Printf("\npath: %s, b.dir: %s\n", path, b.dir)
-		if len(b.dir) > len(path) {
-			continue
-		}
-		path = path[len(b.dir):]
-		// Unescape the path to get the key.
-		key := path
-		//fmt.Printf("key: %q\n", key)
-		// Skip all directories. If opts.Delimiter is set, we'll create
-		// pseudo-directories later.
-		// Note that returning nil means that we'll still recurse into it;
-		// we're just not adding a result for the directory itself.
-		if info.IsDir() {
-			key += "/"
-			// Avoid recursing into subdirectories if the directory name already
-			// doesn't match the prefix; any files in it are guaranteed not to match.
-			if len(key) > len(opts.Prefix) && !strings.HasPrefix(key, opts.Prefix) {
-				walker.SkipDir()
-			}
-			// Similarly, avoid recursing into subdirectories if we're making
-			// "directories" and all of the files in this subdirectory are guaranteed
-			// to collapse to a "directory" that we've already added.
-			if lastPrefix != "" && strings.HasPrefix(key, lastPrefix) {
-				walker.SkipDir()
-			}
-			continue
-		}
-		// Skip files/directories that don't match the Prefix.
-		if !strings.HasPrefix(key, opts.Prefix) {
-			continue
-		}
+	entries, err := b.sftpClient.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, entry := range entries {
 		obj := &driver.ListObject{
-			Key:     key,
-			ModTime: info.ModTime(),
-			Size:    info.Size(),
-		}
-		// If using Delimiter, collapse "directories".
-		if opts.Delimiter != "" {
-			// Strip the prefix, which may contain Delimiter.
-			keyWithoutPrefix := key[len(opts.Prefix):]
-			// See if the key still contains Delimiter.
-			// If no, it's a file and we just include it.
-			// If yes, it's a file in a "sub-directory" and we want to collapse
-			// all files in that "sub-directory" into a single "directory" result.
-			if idx := strings.Index(keyWithoutPrefix, opts.Delimiter); idx != -1 {
-				prefix := opts.Prefix + keyWithoutPrefix[0:idx+len(opts.Delimiter)]
-				// We've already included this "directory"; don't add it.
-				if prefix == lastPrefix {
-					continue
-				}
-				// Update the object to be a "directory".
-				obj = &driver.ListObject{
-					Key:   prefix,
-					IsDir: true,
-				}
-				lastPrefix = prefix
-			}
-		}
-		// If there's a pageToken, skip anything before it.
-		if pageToken != "" && obj.Key <= pageToken {
-			continue
-		}
-		// If we've already got a full page of results, set NextPageToken and stop.
-		if len(result.Objects) == pageSize {
-			result.NextPageToken = []byte(result.Objects[pageSize-1].Key)
-			break
+			Key:     filepath.Join(opts.Prefix, entry.Name()),
+			ModTime: entry.ModTime(),
+			Size:    entry.Size(),
+			IsDir:   entry.IsDir(),
 		}
 		result.Objects = append(result.Objects, obj)
 	}
+
+	sort.Sort(ByDirFilename(result.Objects))
+
 	return &result, nil
 }
 
@@ -447,11 +361,20 @@ func (b *bucket) Delete(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	err = b.sftpClient.Remove(path)
+	info, err := b.sftpClient.Stat(path)
 	if err != nil {
 		return err
 	}
-	return nil
+	//delete dir
+	if info.IsDir() {
+		//first delete dummy file
+		dummyFile := filepath.Join(path, ".newdir")
+		b.sftpClient.Remove(dummyFile)
+		//then dir if empty
+		return b.sftpClient.RemoveDirectory(path)
+	}
+	//delete file
+	return b.sftpClient.Remove(path)
 }
 
 func (b *bucket) SignedURL(ctx context.Context, key string, opts *driver.SignedURLOptions) (string, error) {
