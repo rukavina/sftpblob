@@ -184,7 +184,14 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 }
 
 // As implements driver.As.
-func (b *bucket) As(i interface{}) bool { return false }
+func (b *bucket) As(i interface{}) bool {
+	p, ok := i.(**sftp.Client)
+	if !ok {
+		return false
+	}
+	*p = b.sftpClient
+	return true
+}
 
 // As implements driver.ErrorAs.
 func (b *bucket) ErrorAs(err error, i interface{}) bool {
