@@ -53,6 +53,7 @@ type bucket struct {
 	dir        string
 	opts       *Options
 	sftpClient *sftp.Client
+	sshClient  *ssh.Client
 }
 
 func addTrailingSlash(path string) string {
@@ -78,12 +79,12 @@ func openBucket(u *url.URL, opts *Options) (driver.Bucket, error) {
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
-	client, err := ssh.Dial("tcp", u.Host, sshConfig)
+	sshClient, err := ssh.Dial("tcp", u.Host, sshConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sftp dial to the host %s: %v", u.Host, err)
 	}
 	// open an SFTP session over an existing ssh connection.
-	sftpClient, err := sftp.NewClient(client)
+	sftpClient, err := sftp.NewClient(sshClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sftp client for the host %s: %v", u.Host, err)
 	}
@@ -103,6 +104,7 @@ func openBucket(u *url.URL, opts *Options) (driver.Bucket, error) {
 		dir:        dir,
 		opts:       opts,
 		sftpClient: sftpClient,
+		sshClient:  sshClient,
 	}, nil
 }
 
@@ -116,10 +118,14 @@ func OpenBucket(u *url.URL, opts *Options) (*blob.Bucket, error) {
 }
 
 func (b *bucket) Close() error {
+	var err error
 	if b.sftpClient != nil {
-		return b.sftpClient.Close()
+		err = b.sftpClient.Close()
 	}
-	return nil
+	if b.sshClient != nil {
+		err = b.sshClient.Close()
+	}
+	return err
 }
 
 func (b *bucket) ErrorCode(err error) gcerrors.ErrorCode {
