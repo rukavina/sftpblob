@@ -291,7 +291,8 @@ func (b *bucket) NewTypedWriter(ctx context.Context, key string, contentType str
 	if err := b.sftpClient.MkdirAll(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
-	f, err := b.sftpClient.Create(path)
+	//f, err := b.sftpClient.Create(path)
+	f, err := b.sftpClient.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		return nil, err
 	}

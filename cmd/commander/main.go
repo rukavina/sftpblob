@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -46,7 +45,7 @@ func main() {
 }
 
 func upload(ctx context.Context, b *blob.Bucket, file string) {
-	data, err := ioutil.ReadFile(file)
+	data, err := os.ReadFile(file)
 	if err != nil {
 		log.Fatalf("Failed to read file: %s", err)
 	}
