@@ -369,8 +369,14 @@ func (b *bucket) Copy(ctx context.Context, dstKey, srcKey string, opts *driver.C
 	return w.Close()
 }
 
+// object represents a file or directory's path and metadata.
+type object struct {
+	path string
+	info os.FileInfo
+}
+
 // Delete implements driver.Delete.
-func (b *bucket) Delete(ctx context.Context, key string) error {
+func (b *bucket) Delete(ctx context.Context, key string, opts *driver.DeleteOptions) error {
 	path, err := b.path(key)
 	if err != nil {
 		return err
@@ -379,16 +385,42 @@ func (b *bucket) Delete(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	//delete dir
-	if info.IsDir() {
-		//first delete dummy file
-		dummyFile := filepath.Join(path, ".newdir")
-		b.sftpClient.Remove(dummyFile)
-		//then dir if empty
-		return b.sftpClient.RemoveDirectory(path)
+
+	obj := &object{
+		path: path,
+		info: info,
 	}
-	//delete file
-	return b.sftpClient.Remove(path)
+
+	// Extra level of indirection so BeforeDelete can replace obj if needed
+	objp := &obj
+	if opts.BeforeDelete != nil {
+		asFunc := func(i any) bool {
+			if p, ok := i.(***object); ok {
+				*p = objp
+				return true
+			}
+			return false
+		}
+		if err := opts.BeforeDelete(asFunc); err != nil {
+			return err
+		}
+	}
+	return b.delete(*objp)
+}
+
+func (b *bucket) delete(obj *object) error {
+	// delete dir
+	if obj.info.IsDir() {
+		// first delete dummy file
+		dummyFile := filepath.Join(obj.path, ".newdir")
+		b.sftpClient.Remove(dummyFile)
+
+		// then delete dir if empty
+		return b.sftpClient.RemoveDirectory(obj.path)
+	}
+
+	// delete file
+	return b.sftpClient.Remove(obj.path)
 }
 
 func (b *bucket) SignedURL(ctx context.Context, key string, opts *driver.SignedURLOptions) (string, error) {
